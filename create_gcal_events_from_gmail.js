@@ -1,11 +1,6 @@
-// Create Google Calendar events from sending an email in Gmail
-// Author: Al Chen (al@coda.io)
-// Last Updated: March 31st, 2022
-// See full writeup here: https://www.thekeycuts.com/dear-analyst-76-productivity-hack-for-creating-a-google-calendar-event-by-sending-yourself-an-email/
-
-//////////////// Setup and global variables ////////////////////////////////
-
-GMAIL_LABEL = 'EventsFromEmail'
+//forked from https://github.com/al-codaio/events-from-gmail/blob/main/create_gcal_events_from_gmail.js
+//adapted by github.com/0xblurr
+GMAIL_LABEL = 'EventsFromGmail'
 DEFAULT_EVENT_TIME = 30
 DATE_FORMAT = 'ROW' // US (m/d/y) or ROW (d/m/y)
 
@@ -20,61 +15,95 @@ function getEmail() {
     if (threads[i].isUnread()) {
       var emailSubject = threads[i].getFirstMessageSubject()
       var emailMessage = threads[i].getMessages()[0].getPlainBody()
-      var [eventTitle, startTime, endTime, isAllDay, optionalParams] = parseEmail(emailSubject, emailMessage)  
+      message = []
+      message = Array.from(emailMessage)
+      message_start = emailMessage.search("RESERVATION APPROVED")
+      emailMessage = emailMessage.slice(message_start, message.length)
+      console.log(emailMessage)
+     
+      //get time from email
+      time_index = emailMessage.search("Time: ")
+      if(emailMessage[time_index] != 'T'){
+        time_index = emailMessage.search("\\*Time\\*: ")
+        time = emailMessage.slice(time_index+8, time_index + 25)
+      }else{
+        time = emailMessage.slice(time_index+6, time_index + 25)
+      }
+      
+      //process time chars
+      if(time[1] != ':'){
+        start_time = time.slice(0,5) + time.slice(6, 8)
+        if(time[10] != ':'){
+        end_time = time.slice(9,14) + time.slice(15, 17)
+        }else{
+          end_time = time.slice(9,13) + time.slice(14, 16)
+        }
+      }else{
+        start_time = time.slice(0,4) + time.slice(5, 7)
+        if(time[9] != ':'){
+        end_time = time.slice(8,13) + time.slice(14, 16)
+          }else{
+            end_time = time.slice(8,12) + time.slice(13, 15)
+          }
+      }
+      
+      //get date from email
+      date_index = (emailMessage.search("Date: "))+7
+      console.log(emailMessage[date_index-7])
+      date = emailMessage.slice(date_index-1, date_index + 2)
+      console.log('date' + date)
+      if (emailMessage[date_index-7] != 'D'){
+        date_index = (emailMessage.search("\\*Date\\*: "))+8
+        date = emailMessage.slice(date_index, date_index + 2)
+        console.log('format')
+      }else{
+        date_index -= 1
+      }
+    
+      if(emailMessage[date_index+1] != '/'){
+        date = emailMessage.slice(date_index, date_index + 3)
+        console.log(1)
+        if(emailMessage[date_index+5] != '/'){
+          date = emailMessage.slice(date_index, date_index + 4)
+          console.log(2)
+        }
+      }if(emailMessage[date_index+4] != '/'){
+        date = emailMessage.slice(date_index, date_index + 3)
+        console.log(3)
+      }
+      console.log(date)
+      date = date.split('/').reverse().join('/')
+      console.log(date)
+    
+      court_index = emailMessage.search("P&A: ")
+      eventTitle = emailMessage.slice(court_index, court_index+37)
+      if(court_index == -1){
+        court_index = emailMessage.search("\\*P&A\\*: ")
+        eventTitle = emailMessage.slice(court_index, court_index+37)
+      }
+
+      event = calcDateTime(date,start_time,false)
+      startTime = event[0]
+      event1 = calcDateTime(date, end_time, false)
+      endTime = event1[0]
+      console.log(event + '\n' + event1)
+
+      isAllDay = false
+      optionalParams = ''
       createEvent(eventTitle, startTime, endTime, isAllDay, optionalParams) 
       threads[i].markRead()
+      
     } 
   }
-}
-
-function parseEmail(subject, message) {
-  var eventDetails = []
-  eventDetails = subject.split(",")
-
-  // Decide if event is all-day based on if there is a time
-  var allDay = eventDetails[2] ? false : true
-
-  // Convert dates/times into useable format
-  var [startTime, endTime, isAllDay] = calcDateTime(eventDetails[1], eventDetails[2] ? eventDetails[2] : '' , allDay)
-  
-  // Optional params in event: 0 = emails, 1 = description
-  var lines = message.split(/\r?\n/)
-  var [guests, description] = parseMessage(lines)  
-  if (guests != '' || description != '') {
-    var optionalParams = {guests: guests, description: description}
-  }
-  return [eventDetails[0], startTime, endTime, isAllDay, optionalParams]  
-}
-
-// Parse body of email for cc: and event description
-function parseMessage(lines) {
-  if (lines[0].toLowerCase().indexOf('cc:') != -1) {
-    var guests = lines[0].substring(3, lines[0].length)
-    var joinDescription = [];
-    for (var i = 1; i < lines.length; i++){
-      joinDescription.push(lines[i]);
-      var description = joinDescription.join("\n");
-    }  
-  } else {
-    var guests = '';
-    var joinDescription = [];
-    for (var i = 0; i < lines.length; i++){
-      joinDescription.push(lines[i]);
-      var description = joinDescription.join("\n");
-    }
-  }
-  return [guests, description];
 }
 
 function createEvent(eventTitle, startTime, endTime, isAllDay, optionalParams) {
   var calPayload
   
   // For single-day events don't need an end date
-  if (startTime == endTime) {
-    calPayload = [eventTitle, startTime, ,optionalParams]  
-  } else {
-    calPayload = [eventTitle, startTime, endTime, optionalParams]
-  }
+
+  calPayload = [eventTitle, startTime, endTime, optionalParams]
+
   
   if (isAllDay) {
     var event = CalendarApp.getDefaultCalendar().createAllDayEvent(...calPayload)
